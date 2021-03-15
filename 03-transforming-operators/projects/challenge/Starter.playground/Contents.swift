@@ -58,11 +58,34 @@ example(of: "Create a phone number lookup") {
   
   let input = PassthroughSubject<String, Never>()
   
-  <#Add your code here#>
+  // 1. Receives a string of ten numbers or letters.
+    // 2. Looks up that number in a contacts data structure.
   
-  "0!1234567".forEach {
-    input.send(String($0))
-  }
+//  "0!1234567".forEach {
+//    input.send(String($0))
+//  }
+    
+    input.map(convert)
+    .replaceNil(with: 0)
+    .collect(10)
+    .map(format)
+    .map(dial)
+    .sink { value in
+        print(value)
+    }.store(in: &subscriptions)
+  
+    
+    "0!1234567".publisher.map {
+        convert(phoneNumber: "\($0)")
+    }
+    .replaceNil(with: 0)
+    .collect(10)
+    .map {
+        format(digits: $0)
+    }
+    .sink { value in
+        print(dial(phoneNumber: value))
+    }.store(in: &subscriptions)
   
   "4085554321".forEach {
     input.send(String($0))

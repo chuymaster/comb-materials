@@ -9,7 +9,7 @@ example(of: "Create a Blackjack card dealer") {
   func deal(_ cardCount: UInt) {
     var deck = cards
     var cardsRemaining = 52
-    var hand = Hand()
+    var hand = Hand() // empty [Card] -- Card = (String, Int)
     
     for _ in 0 ..< cardCount {
       let randomIndex = Int.random(in: 0 ..< cardsRemaining)
@@ -19,11 +19,28 @@ example(of: "Create a Blackjack card dealer") {
     }
     
     // Add code to update dealtHand here
-    
+    if hand.points > 21 {
+        //  If the result is greater than 21, send the HandError.busted through the dealtHand subject.
+        dealtHand.send(completion: .failure(HandError.busted))
+    } else {
+        // Otherwise, send the hand value.
+        dealtHand.send(hand)
+        dealtHand.send(completion: .finished)
+    }
   }
   
   // Add subscription to dealtHand here
-  
+    dealtHand.sink { (completion) in
+        switch completion {
+        case .finished:
+            print("finished")
+        case .failure(let error):
+            print(error)
+        }
+    } receiveValue: { hand in
+        print("\(hand.cardString) (\(hand.points) points)")
+    }
+
   
   deal(3)
 }

@@ -26,6 +26,7 @@
 /// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 /// THE SOFTWARE.
 
+import Combine
 import UIKit
 
 class MainViewController: UIViewController {
@@ -43,6 +44,8 @@ class MainViewController: UIViewController {
 
   // MARK: - Private properties
   
+    private var subscriptions = Set<AnyCancellable>()
+    private let images = CurrentValueSubject<[UIImage], Never>([])
 
   // MARK: - View controller
   
@@ -50,6 +53,18 @@ class MainViewController: UIViewController {
     super.viewDidLoad()
     let collageSize = imagePreview.frame.size
     
+    images
+        .handleEvents(receiveOutput: { [ weak self] photos in
+            self?.updateUI(photos: photos)
+        })
+        .map { photos in
+            UIImage.collage(images: photos, size: collageSize)
+        }
+        .handleEvents(receiveOutput: { [ weak self] collages in
+            // this one has single `UIImage?` type
+        })
+        .assign(to: \.image, on: imagePreview)
+        .store(in: &subscriptions)
   }
   
   private func updateUI(photos: [UIImage]) {
@@ -62,23 +77,89 @@ class MainViewController: UIViewController {
   // MARK: - Actions
   
   @IBAction func actionClear() {
-    
+    images.send([])
   }
   
   @IBAction func actionSave() {
     guard let image = imagePreview.image else { return }
     
+    PhotoWriter.save(image)
+        .sink { [weak self] completion in
+            if case .failure(let error) = completion {
+                self?.showMessage("Error", description: error.localizedDescription)
+            }
+            self?.actionClear()
+        } receiveValue: { [weak self] id in
+            self?.showMessage("Saved with id: \(id)")
+        }
+    .store(in: &subscriptions)
   }
+    
+    enum PhotoError: Error {
+        case overLimit
+    }
   
   @IBAction func actionAdd() {
+//    let newImages = images.value + [UIImage(named: "IMG_1907.jpg")!]
+//    images.send(newImages)
     
+    let photos = storyboard!.instantiateViewController(
+      withIdentifier: "PhotosViewController") as! PhotosViewController
+
+    let newPhotos = photos.selectedPhotos
+        .prefix(while: { [unowned self] _ in
+            return self.images.value.count < 6
+        }).share()
+    
+    newPhotos
+        .filter { [unowned self] _ in
+            self.images.value.count == 5
+        }
+        .flatMap { [unowned self] _ in
+            return self.alert(title: "Purchase More please", text: "aaa")
+        }
+        .sink { [unowned self] _ in
+            self.navigationController?.popViewController(animated: true)
+        }
+        .store(in: &subscriptions)
+
+    newPhotos
+      .map { [unowned self] newImage in
+      // 1
+        return self.images.value + [newImage]
+      }
+      // 2
+      .assign(to: \.value, on: images)
+      // 3
+      .store(in: &subscriptions)
+    
+    newPhotos
+        .ignoreOutput()
+        .delay(for: 2.0, scheduler: DispatchQueue.main)
+        .sink(receiveCompletion: { [unowned self] _ in
+            self.updateUI(photos: self.images.value)
+        }, receiveValue: { _ in })
+        .store(in: &subscriptions)
+
+    photos.$selectedPhotosCount
+      .filter { $0 > 0 }
+      .map { "Selected \($0) photos" }
+      .assign(to: \.title, on: self)
+      .store(in: &subscriptions)
+    
+    navigationController!.pushViewController(photos, animated: true)
+
   }
   
   private func showMessage(_ title: String, description: String? = nil) {
-    let alert = UIAlertController(title: title, message: description, preferredStyle: .alert)
-    alert.addAction(UIAlertAction(title: "Close", style: .default, handler: { alert in
-      self.dismiss(animated: true, completion: nil)
-    }))
-    present(alert, animated: true, completion: nil)
+//    let alert = UIAlertController(title: title, message: description, preferredStyle: .alert)
+//    alert.addAction(UIAlertAction(title: "Close", style: .default, handler: { alert in
+//      self.dismiss(animated: true, completion: nil)
+//    }))
+//    present(alert, animated: true, completion: nil)
+    
+    alert(title: title, text: description)
+        .sink(receiveValue: { _ in })
+        .store(in: &subscriptions)
   }
 }
